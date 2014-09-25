@@ -21,6 +21,7 @@ Filter page
   3. Clicking on the "Search" button should dismiss the filters page and trigger the search w/ the new filter settings.
 
 Pending 
+
 1. When change to landscape mode then table cell is not auto layout
 
 2. The filters table should be organized into sections as in the mock.
