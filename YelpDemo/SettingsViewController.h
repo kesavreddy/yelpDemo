@@ -10,11 +10,13 @@
 
 @class SettingsViewController;
 @protocol SettingsViewControllerDelegate <NSObject>
-- (void)addItemViewController:(SettingsViewController *)controller didFinishEnteringItem:(NSString *)item;
+- (void)filterSettingsChange:(SettingsViewController *)controller didClickonSearch:(NSMutableDictionary *)filterSettings withfilters:(NSMutableDictionary*)filters;
 
 @end
 @interface SettingsViewController : UIViewController <UITableViewDataSource,UITableViewDelegate>
 @property (nonatomic, weak) id <SettingsViewControllerDelegate> delegate;
+@property (strong,nonatomic) NSMutableDictionary *selectedFilters;
 - (void) cancelFilters;
 - (void) searchWithFilters;
+
 @end

@@ -6,9 +6,10 @@
 //  Copyright (c) 2014 Venkata Reddy. All rights reserved.
 //
 
+// tutorial for location manager - http://www.appcoda.com/how-to-get-current-location-iphone-user/
+
 #import "ResultsViewController.h"
 #import "UIImageView+AFNetworking.h"
-#import "SettingsViewController.h"
 #import "DetailedViewController.h"
 #import "ResultsCell.h"
 #import "YelpClient.h"
@@ -24,11 +25,13 @@ NSString * const kYelpTokenSecret = @"mqtKIxMIR4iBtBPZCmCLEb-Dz3Y";
 @property (weak, nonatomic) IBOutlet UITableView *tableView;
 @property (strong, nonatomic) UISearchBar *searchBar;
 @property (nonatomic, strong) YelpClient *client;
-@property (nonatomic,strong)NSArray *results;
+@property (nonatomic,strong) NSArray *results;
 @property (nonatomic, strong) NSMutableArray *searchResult;
 @property (strong, nonatomic) CLLocationManager *locationManager;
 @property (strong, nonatomic) CLLocation *currentLocation;
 @property (strong, nonatomic) UIRefreshControl *refreshControl ;
+@property (strong,nonatomic) NSMutableDictionary *filters;
+@property (strong,nonatomic) UITableViewCell *_stubCell;
 @end
 
 @implementation ResultsViewController
@@ -36,22 +39,31 @@ NSString * const kYelpTokenSecret = @"mqtKIxMIR4iBtBPZCmCLEb-Dz3Y";
 - (void)viewDidLoad {
     [super viewDidLoad];
     //fetch once current location
-    CLLocationManager *locationManager = [[CLLocationManager alloc] init];
-    self.currentLocation = [[CLLocation alloc] initWithLatitude:locationManager.location.coordinate.latitude longitude:locationManager.location.coordinate.longitude];
+    //CLLocationManager *locationManager = [[CLLocationManager alloc] init];
+    //self.currentLocation = [[CLLocation alloc] initWithLatitude:locationManager.location.coordinate.latitude longitude:locationManager.location.coordinate.longitude];
+    
     
     //Location manager
     self.locationManager = [[CLLocationManager alloc] init];
     self.locationManager.delegate = self;
     self.locationManager.desiredAccuracy = kCLLocationAccuracyBest;
     [self.locationManager startUpdatingLocation];
+    self.currentLocation = [[CLLocation alloc] initWithLatitude:self.locationManager.location.coordinate.latitude longitude:self.locationManager.location.coordinate.longitude];
+    NSLog(@"current location %@",self.currentLocation);
     
     // Do any additional setup after loading the view from its nib.
     self.tableView.delegate = self;
     self.tableView.dataSource = self;
     self.tableView.rowHeight = UITableViewAutomaticDimension;
+    //self.tableView.autoresizingMask = UIViewAutoresizingFlexibleHeight|UIViewAutoresizingFlexibleWidth;
     // Get data
     [self fetchData:@""];
-    [self.tableView registerNib:[UINib nibWithNibName:@"ResultsCell" bundle:nil]forCellReuseIdentifier:@"ResultsCell"];
+    UINib *cellNib = [UINib nibWithNibName:@"ResultsCell" bundle:nil];
+    [self.tableView registerNib:cellNib forCellReuseIdentifier:@"ResultsCell"];
+    
+    self.filters = [NSMutableDictionary dictionary];
+    
+    __stubCell = [cellNib instantiateWithOwner:nil options:nil][0]; //instantiate cell object
 
 }
 
@@ -78,7 +90,7 @@ NSString * const kYelpTokenSecret = @"mqtKIxMIR4iBtBPZCmCLEb-Dz3Y";
      } else {
          result = self.results[indexPath.row];
      }
-    
+
     cell.titleLabel.text = result[@"name"];
     
     NSString *postUrl = result[@"image_url"];
@@ -93,7 +105,15 @@ NSString * const kYelpTokenSecret = @"mqtKIxMIR4iBtBPZCmCLEb-Dz3Y";
     NSInteger reviews = [result[@"review_count"] integerValue];
     cell.reviewsLabel.text = [NSString stringWithFormat:@"%ld reviews",reviews] ;
 
-    cell.catLabel.text = [result[@"categories"] componentsJoinedByString:@", "];
+    NSArray *categories = result[@"categories"];
+    NSString *tempCat = [[NSString alloc]init];
+    for (int pos=0; pos<[categories count]; pos++) {
+        if(pos > 0 ) {
+            tempCat = [tempCat stringByAppendingString:@", "];
+        }
+        tempCat = [tempCat stringByAppendingString:categories[pos][0]];
+    }
+    cell.catLabel.text = tempCat;//[result[@"categories"] componentsJoinedByString:@", "];
     
     NSString *latStr =[result valueForKeyPath:@"location.coordinate.latitude"];
     NSString *longStr =[result valueForKeyPath:@"location.coordinate.longitude"];
@@ -124,6 +144,14 @@ NSString * const kYelpTokenSecret = @"mqtKIxMIR4iBtBPZCmCLEb-Dz3Y";
     detailViewController.content = result;
     detailViewController.listingTitle = resultCell.titleLabel.text;
     [self.navigationController pushViewController:detailViewController animated:YES];
+}
+
+// return dynamic row height based on the content
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    [__stubCell layoutSubviews];
+    CGFloat height = [__stubCell.contentView systemLayoutSizeFittingSize:UILayoutFittingCompressedSize].height;
+    return height + 1;
+//    NSLog(@"row height :-%f",[resultCell.contentView systemLayoutSizeFittingSize:UILayoutFittingCompressedSize].height);
 }
 
 -(void) createSearchBar {
@@ -160,6 +188,8 @@ NSString * const kYelpTokenSecret = @"mqtKIxMIR4iBtBPZCmCLEb-Dz3Y";
 -(void) showFiltersView {
     NSLog(@"On Click on Filter");
     SettingsViewController *settingsViewController = [[SettingsViewController alloc] init];
+    settingsViewController.delegate = self;
+    settingsViewController.selectedFilters = self.filters;
     //[self.navigationController pushViewController:settingsViewController animated:YES];
     [UIView animateWithDuration:0.75
                      animations:^{
@@ -202,13 +232,45 @@ NSString * const kYelpTokenSecret = @"mqtKIxMIR4iBtBPZCmCLEb-Dz3Y";
 }
 
 /*
- * Get latest data and update the view
+ * Get latest data from yelp api without any filters
  */
 - (void)fetchData:(NSString*) searchText {
-    // You can register for Yelp API keys here: http://www.yelp.com/developers/manage_api_keys
+    [self fetchData:searchText WithCategory:@"" withSortBy:0 withRadius:1609 withDeals:@"true"];
+}
+
+/*
+ * Get latest data from yelp api based on filters
+ */
+- (void)fetchData:(NSString*) searchText WithCategory:(NSString*)category withSortBy:(NSUInteger)sortBy withRadius:(NSInteger) radius withDeals:(NSString*) deals {
+    // Yelp API keys here: http://www.yelp.com/developers/manage_api_keys
     self.client = [[YelpClient alloc] initWithConsumerKey:kYelpConsumerKey consumerSecret:kYelpConsumerSecret accessToken:kYelpToken accessSecret:kYelpTokenSecret];
     
-    [self.client searchWithTerm:searchText success:^(AFHTTPRequestOperation *operation, id response) {
+    [self.client searchWithTerm:searchText WithCategory:category WithDeals:deals WithRadius:radius WithSort:sortBy success:^(AFHTTPRequestOperation *operation, id response) {
+        self.results = response[@"businesses"];
+        if ([self.results count] > 0){
+            self.tableView.tableHeaderView = nil;
+        } else {
+            NSLog(@"results is empty");
+            UIView *view = [[UIView alloc] initWithFrame:CGRectMake(0,0,320,30)];
+            UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(0,0,320,30)];
+            label.text = @"No results that match your search filters!!";
+            [view addSubview:label];
+            self.tableView.tableHeaderView = view;
+        }
+        [self.tableView reloadData];
+    } failure:^(AFHTTPRequestOperation *operation, NSError *error) {
+        NSLog(@"error: %@", [error description]);
+    }];
+}
+
+/*
+ * Get latest data from yelp api based on filters
+ */
+- (void)fetchData:(NSString*) searchText withFilters:(NSDictionary *)filters{
+    // Yelp API keys here: http://www.yelp.com/developers/manage_api_keys
+    self.client = [[YelpClient alloc] initWithConsumerKey:kYelpConsumerKey consumerSecret:kYelpConsumerSecret accessToken:kYelpToken accessSecret:kYelpTokenSecret];
+    
+    [self.client searchWithTerm:searchText withFilters:filters success:^(AFHTTPRequestOperation *operation, id response) {
         self.results = response[@"businesses"];
         if ([self.results count] > 0){
             self.tableView.tableHeaderView = nil;
@@ -246,7 +308,20 @@ NSString * const kYelpTokenSecret = @"mqtKIxMIR4iBtBPZCmCLEb-Dz3Y";
     }
 }
 
+- (void)locationManager:(CLLocationManager *)manager didUpdateLocations:(NSArray *)locations {
+        NSLog(@"didUpdateLocations: %@", locations);
+}
 
+- (void)filterSettingsChange:(SettingsViewController *)controller didClickonSearch:(NSMutableDictionary *)filterSettings withfilters:(NSMutableDictionary *)filters {
+    // store it to local prop so that while open filters page we can show what user settings are
+    NSLog(@"delegate method called %@ and %@", filterSettings,filters);
+    self.filters = filterSettings;
+    // now fetch data with filters settings
+    //NSArray* keys = [filterSettings allKeys];
+    
+    [self fetchData:@"" withFilters:filters];
+    [self.tableView reloadData];
+}
 /*
 #pragma mark - Navigation
 
