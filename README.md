@@ -15,7 +15,9 @@ Search results page
   
 Filter page
   1. The filters you should actually have are: category, sort (best match, distance, highest rated), radius (meters), deals (on/off).
+  
   2.The filters table should be organized into sections as in the mock.
+
   3. Clicking on the "Search" button should dismiss the filters page and trigger the search w/ the new filter settings.
 
 Walkthrough of all user stories:
