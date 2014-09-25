@@ -22,7 +22,9 @@ Filter page
 
 Pending 
 1. When change to landscape mode then table cell is not auto layout
+
 2. The filters table should be organized into sections as in the mock.
+
 3. Radius filter should expand as in the real Yelp app
 
 Walkthrough of all user stories:
